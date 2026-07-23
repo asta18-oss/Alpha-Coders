@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>IntelliFetch — Proactive Talent Scouting</title>
+
+<!-- Tailwind via CDN -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Fonts: Inter for interface text, JetBrains Mono for data / telemetry -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Inter', 'sans-serif'],
+          mono: ['JetBrains Mono', 'monospace'],
+        },
+        colors: {
+          base: '#09090b',
+          panel: '#0f0f12',
+          card: '#18181b',
+          border: '#27272a',
+          indigo: {
+            glow: '#818cf8',
+          }
+        },
+        boxShadow: {
+          'focus-glow': '0 0 0 3px rgba(99, 102, 241, 0.35), 0 0 20px -4px rgba(99, 102, 241, 0.55)',
+          'neon': '0 0 0 1px rgba(129,140,248,0.7), 0 0 18px -2px rgba(129,140,248,0.65)',
+          'glass': '0 8px 32px rgba(0,0,0,0.45)',
+        }
+      }
+    }
+  }
+</script>
+
+<style>
+  html, body { background:#09090b; }
+  * { scrollbar-width: thin; scrollbar-color: #27272a transparent; }
+  *::-webkit-scrollbar { width: 8px; height:8px; }
+  *::-webkit-scrollbar-thumb { background:#27272a; border-radius:8px; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    color: #e4e4e7;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  /* ---------- Mesh background ---------- */
+  .mesh-bg {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 15% 20%, rgba(99,102,241,0.16), transparent 40%),
+      radial-gradient(circle at 85% 15%, rgba(217,70,239,0.10), transparent 45%),
+      radial-gradient(circle at 50% 85%, rgba(56,189,248,0.10), transparent 45%),
+      #09090b;
+  }
+  .mesh-bg::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(rgba(255,255,255,0.035) 1px, transparent 1px);
+    background-size: 26px 26px;
+    mask-image: radial-gradient(circle at center, black, transparent 75%);
+  }
+
+  /* ---------- View transitions ---------- */
+  .view {
+    display: none;
+    opacity: 0;
+    transition: opacity 0.45s ease;
+  }
+  .view.active {
+    display: block;
+    opacity: 1;
+  }
+  .view.active.flex-view { display: flex; }
+
+  /* ---------- Glass panel ---------- */
+  .glass {
+    background: rgba(24,24,27,0.55);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid #27272a;
+  }
+
+  /* ---------- Inputs ---------- */
+  .input-field {
+    background: #18181b;
+    border: 1px solid #27272a;
+    color: #f4f4f5;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+  .input-field:focus {
+    outline: none;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.35), 0 0 20px -4px rgba(99,102,241,0.55);
+  }
+
+  /* ---------- Tech badge ---------- */
+  .tech-badge {
+    border: 1px solid #27272a;
+    background: #18181b;
+    transition: all 0.18s ease;
+    cursor: pointer;
+  }
+  .tech-badge:hover { border-color: #3f3f46; transform: translateY(-1px); }
+  .tech-badge.selected {
+    border-color: #818cf8;
+    background: rgba(99,102,241,0.12);
+    box-shadow: 0 0 0 1px rgba(129,140,248,0.7), 0 0 18px -2px rgba(129,140,248,0.65);
+  }
+
+  /* ---------- Hub card ---------- */
+  .hub-card {
+    border: 1px solid #27272a;
+    background: #131316;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+  }
+  .hub-card:hover { border-color: #3f3f46; }
+  .hub-card.selected {
+    border-color: #22c55e;
+    box-shadow: 0 0 0 1px rgba(34,197,94,0.55), 0 0 20px -4px rgba(34,197,94,0.5);
+  }
+  .hub-check {
+    opacity: 0;
+    transform: scale(0.5);
+    transition: all 0.2s ease;
+  }
+  .hub-card.selected .hub-check { opacity: 1; transform: scale(1); }
+
+  /* ---------- Telemetry ping ---------- */
+  .ping-dot { position: relative; width: 8px; height: 8px; border-radius: 999px; background: #22c55e; }
+  .ping-dot::after {
+    content: '';
+    position: absolute; inset: -4px;
+    border-radius: 999px;
+    background: #22c55e;
+    animation: ping-anim 1.8s cubic-bezier(0,0,0.2,1) infinite;
+  }
+  @keyframes ping-anim {
+    0% { transform: scale(0.6); opacity: 0.7; }
+    70% { transform: scale(2.2); opacity: 0; }
+    100% { opacity: 0; }
+  }
+
+  /* ---------- Scan button ambient ring ---------- */
+  .scan-btn { position: relative; isolation: isolate; }
+  .scan-btn::before {
+    content: '';
+    position: absolute; inset: -2px;
+    border-radius: 10px;
+    padding: 2px;
+    background: linear-gradient(120deg, #6366f1, #a855f7, #6366f1);
+    background-size: 200% 200%;
+    animation: scan-ring 3s linear infinite;
+    mask: linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    opacity: 0.85;
+    z-index: -1;
+  }
+  @keyframes scan-ring { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
+
+  /* radar sweep loading icon */
+  .radar-sweep {
+    width: 16px; height: 16px; border-radius: 999px;
+    background: conic-gradient(from 0deg, transparent 0deg, #a5b4fc 60deg, transparent 61deg);
+    animation: spin 0.9s linear infinite;
+    position: relative;
+  }
+  .radar-sweep::after {
+    content: ''; position: absolute; inset: 0; border-radius: 999px;
+    border: 1.5px solid rgba(165,180,252,0.35);
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- Opportunity card ---------- */
+  .opp-card {
+    background: rgba(24,24,27,0.6);
+    border: 1px solid #27272a;
+    transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+  }
+  .opp-card:hover {
+    transform: translateY(-4px);
+    border-color: #3f3f46;
+    box-shadow: 0 14px 40px -12px rgba(0,0,0,0.6);
+  }
+  .accent-bar { height: 4px; width: 100%; border-radius: 999px 999px 0 0; }
+
+  /* ---------- Toggle switch ---------- */
+  .toggle-track {
+    width: 40px; height: 22px; border-radius: 999px;
+    background: #27272a; position: relative; cursor: pointer;
+    transition: background 0.2s ease; flex-shrink:0;
+  }
+  .toggle-track.on { background: #4f46e5; }
+  .toggle-thumb {
+    width: 16px; height: 16px; border-radius: 999px; background: #f4f4f5;
+    position: absolute; top: 3px; left: 3px;
+    transition: transform 0.2s ease;
+  }
+  .toggle-track.on .toggle-thumb { transform: translateX(18px); }
+
+  /* ---------- Mic recording pulse ---------- */
+  .mic-pulse {
+    width: 64px; height: 64px; border-radius: 999px;
+    background: radial-gradient(circle, rgba(239,68,68,0.35), transparent 70%);
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .mic-pulse::before, .mic-pulse::after {
+    content: ''; position: absolute; inset: 0; border-radius: 999px;
+    border: 1.5px solid rgba(239,68,68,0.5);
+    animation: mic-ring 1.6s ease-out infinite;
+  }
+  .mic-pulse::after { animation-delay: 0.5s; }
+  @keyframes mic-ring { 0% { transform: scale(0.8); opacity: 0.9; } 100% { transform: scale(1.9); opacity: 0; } }
+
+  /* roadmap timeline */
+  .roadmap-line { position: absolute; left: 9px; top: 6px; bottom: 6px; width: 2px; background: linear-gradient(180deg, #6366f1, #27272a); }
+  .roadmap-dot { width: 10px; height: 10px; border-radius: 999px; background: #6366f1; box-shadow: 0 0 10px 1px rgba(99,102,241,0.7); }
+
+  ::selection { background: rgba(99,102,241,0.4); }
+
+  .fade-in-up { animation: fadeInUp 0.4s ease both; }
+  @keyframes fadeInUp { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
+</style>
+</head>
+
+<body class="min-h-screen">
+<div class="mesh-bg"></div>
+
+<!-- ============================================================ -->
+<!-- VIEW 1 — AUTH GATEWAY                                         -->
+<!-- ============================================================ -->
+<section id="view-auth" class="view active flex-view relative z-10 min-h-screen items-center justify-center px-4 py-10">
+  <div class="w-full max-w-md">
+    <div class="text-center mb-8">
+      <div class="inline-flex items-center gap-2 mb-3">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-fuchsia-500 flex items-center justify-center text-sm font-bold">IF</div>
+        <span class="text-lg font-semibold tracking-tight text-zinc-100">IntelliFetch</span>
+      </div>
+      <p class="text-zinc-500 text-sm">Proactive Talent Scouting — the agent works while you build.</p>
+    </div>
+
+    <div class="glass rounded-2xl shadow-glass p-1.5">
+      <!-- toggle -->
+      <div class="relative grid grid-cols-2 bg-[#0f0f12] rounded-xl p-1 mb-6">
+        <div id="auth-slider" class="absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] bg-indigo-500/90 rounded-lg transition-transform duration-300 ease-out"></div>
+        <button onclick="setAuthMode('signin')" id="tab-signin" class="relative z-10 py-2 text-sm font-medium rounded-lg transition-colors">Sign In</button>
+        <button onclick="setAuthMode('signup')" id="tab-signup" class="relative z-10 py-2 text-sm font-medium rounded-lg transition-colors">Create Account</button>
+      </div>
+
+      <div class="px-5 pb-6 pt-1">
+        <!-- SIGN IN FORM -->
+        <form id="form-signin" onsubmit="return handleSignIn(event)" class="space-y-4">
+          <div>
+            <label class="block text-xs text-zinc-500 mb-1.5">Phone number</label>
+            <div class="flex gap-2">
+              <div class="input-field rounded-lg px-2.5 flex items-center text-sm text-zinc-400 gap-1">🇮🇳 +91</div>
+              <input required type="tel" placeholder="98765 43210" class="input-field flex-1 rounded-lg px-3 py-2.5 text-sm">
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs text-zinc-500 mb-1.5">Password</label>
+            <input required type="password" placeholder="••••••••" class="input-field w-full rounded-lg px-3 py-2.5 text-sm">
+          </div>
+          <button type="submit" class="w-full py-2.5 rounded-lg bg-indigo-500 hover:bg-indigo-400 transition-colors text-sm font-semibold text-white">Sign In</button>
+        </form>
+
+        <!-- SIGN UP FORM -->
+        <form id="form-signup" onsubmit="return handleSignUp(event)" class="space-y-4 hidden">
+          <div>
+            <label class="block text-xs text-zinc-500 mb-1.5">Full name</label>
+            <input required id="su-name" type="text" placeholder="Aditi Sharma" class="input-field w-full rounded-lg px-3 py-2.5 text-sm">
+          </div>
+          <div>
+            <label class="block text-xs text-zinc-500 mb-1.5">Registered WhatsApp number</label>
+            <div class="flex gap-2">
+              <div class="input-field rounded-lg px-2.5 flex items-center text-sm text-zinc-400 gap-1">🇮🇳 +91</div>
+              <input required id="su-phone" type="tel" placeholder="98765 43210" class="input-field flex-1 rounded-lg px-3 py-2.5 text-sm">
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs text-zinc-500 mb-1.5">Core tech stack</label>
+            <input required id="su-stack" type="text" placeholder="React, FastAPI, Python" class="input-field w-full rounded-lg px-3 py-2.5 text-sm">
+          </div>
+          <div>
+            <label class="block text-xs text-zinc-500 mb-1.5">Password</label>
+            <input required type="password" placeholder="Create a password" class="input-field w-full rounded-lg px-3 py-2.5 text-sm">
+          </div>
+          <button type="submit" class="w-full py-2.5 rounded-lg bg-indigo-500 hover:bg-indigo-400 transition-colors text-sm font-semibold text-white">Create Account</button>
+        </form>
+      </div>
+    </div>
+    <p class="text-center text-xs text-zinc-600 mt-6">Connected locally to <span class="font-mono text-zinc-500">localhost:8000</span></p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- VIEW 2 — ONBOARDING WIZARD                                    -->
+<!-- ============================================================ -->
+<section id="view-onboarding" class="view relative z-10 min-h-screen px-4 py-14">
+  <div class="max-w-2xl mx-auto">
+
+    <!-- progress -->
+    <div class="flex items-center gap-3 mb-10">
+      <div id="prog-step1" class="flex items-center gap-2 text-sm font-medium text-indigo-400">
+        <div class="w-7 h-7 rounded-full bg-indigo-500/20 border border-indigo-500 flex items-center justify-center text-xs">1</div>
+        Tech Stack
+      </div>
+      <div class="flex-1 h-px bg-[#27272a] relative">
+        <div id="prog-line" class="absolute inset-y-0 left-0 w-0 bg-indigo-500 transition-all duration-500"></div>
+      </div>
+      <div id="prog-step2" class="flex items-center gap-2 text-sm font-medium text-zinc-600">
+        <div class="w-7 h-7 rounded-full bg-[#18181b] border border-[#27272a] flex items-center justify-center text-xs">2</div>
+        Workspace Hubs
+      </div>
+    </div>
+
+    <!-- STEP 1 -->
+    <div id="onboard-step-1" class="glass rounded-2xl p-7">
+      <h2 class="text-xl font-semibold text-zinc-100 mb-1">What do you build with?</h2>
+      <p class="text-sm text-zinc-500 mb-6">Select every technology in your stack — the agent uses this to score matches.</p>
+      <div id="tech-grid" class="grid grid-cols-3 sm:grid-cols-3 gap-3 mb-8"></div>
+      <div class="flex justify-end">
+        <button onclick="goToStep(2)" class="px-5 py-2.5 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-sm font-semibold text-white transition-colors">Continue →</button>
+      </div>
+    </div>
+
+    <!-- STEP 2 -->
+    <div id="onboard-step-2" class="glass rounded-2xl p-7 hidden">
+      <h2 class="text-xl font-semibold text-zinc-100 mb-1">Choose your target hubs</h2>
+      <p class="text-sm text-zinc-500 mb-6">The scouting agent will prioritize opportunities in these cities.</p>
+      <div id="hub-grid" class="grid grid-cols-2 gap-3 mb-8"></div>
+      <div class="flex justify-between">
+        <button onclick="goToStep(1)" class="px-5 py-2.5 rounded-lg border border-[#27272a] text-sm font-medium text-zinc-400 hover:border-zinc-600 transition-colors">← Back</button>
+        <button onclick="finishOnboarding()" class="px-5 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-sm font-semibold text-white transition-colors">Launch Dashboard ⚡</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- VIEW 3 — DASHBOARD                                            -->
+<!-- ============================================================ -->
+<section id="view-dashboard" class="view relative z-10 min-h-screen">
+
+  <!-- TOP NAV -->
+  <header class="sticky top-0 z-20 border-b border-[#27272a] bg-[#09090b]/80 backdrop-blur-xl">
+    <div class="max-w-[1400px] mx-auto px-6 py-3.5 flex items-center justify-between gap-4">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-fuchsia-500 flex items-center justify-center text-sm font-bold">IF</div>
+        <span class="font-semibold tracking-tight text-zinc-100">IntelliFetch</span>
+      </div>
+
+      <div class="flex items-center gap-2 text-xs font-mono text-zinc-400 bg-[#131316] border border-[#27272a] rounded-full px-3 py-1.5">
+        <span class="ping-dot"></span>
+        Proactive Engine Online
+      </div>
+
+      <button id="scan-btn" onclick="triggerScan()" class="scan-btn flex items-center gap-2 bg-[#131316] border border-[#27272a] rounded-lg px-4 py-2 text-sm font-semibold text-zinc-100 hover:bg-[#1a1a1e] transition-colors">
+        <span id="scan-icon">⚡</span>
+        <span id="scan-label">Trigger Live Agent Web-Scan</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="max-w-[1400px] mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
+
+    <!-- SIDEBAR -->
+    <aside class="space-y-5">
+      <!-- profile -->
+      <div class="glass rounded-xl p-5">
+        <p class="text-xs text-zinc-500 mb-3">Student Profile</p>
+        <p id="profile-name" class="font-semibold text-zinc-100">—</p>
+        <p id="profile-phone" class="text-xs text-zinc-500 font-mono mb-3">—</p>
+        <div id="profile-stack" class="flex flex-wrap gap-1.5"></div>
+      </div>
+
+      <!-- search -->
+      <div class="glass rounded-xl p-4">
+        <div class="relative">
+          <input id="search-input" type="text" placeholder="Search opportunities…" class="input-field w-full rounded-lg pl-3 pr-9 py-2 text-sm">
+          <kbd class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono text-zinc-600 border border-[#27272a] rounded px-1.5 py-0.5">/</kbd>
+        </div>
+      </div>
+
+      <!-- hub filters -->
+      <div class="glass rounded-xl p-5">
+        <p class="text-xs text-zinc-500 mb-3">Target Tech Hubs</p>
+        <div id="hub-filter-list" class="space-y-2"></div>
+      </div>
+
+      <!-- matchmaking -->
+      <div class="glass rounded-xl p-5">
+        <div class="flex items-center justify-between mb-1">
+          <p class="text-sm font-medium text-zinc-200">👥 Teammate Matchmaking</p>
+          <div id="matchmaking-toggle" class="toggle-track" onclick="toggleMatchmaking()"><div class="toggle-thumb"></div></div>
+        </div>
+        <p class="text-xs text-zinc-500">Opt-in to surface complementary hackathon peers nearby.</p>
+        <div id="matchmaking-feed" class="mt-4 space-y-2 hidden"></div>
+      </div>
+    </aside>
+
+    <!-- MAIN -->
+    <main>
+      <!-- metrics -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="glass rounded-xl p-4">
+          <div class="flex items-center justify-between mb-2"><p class="text-xs text-zinc-500">Total System Jobs</p><span class="text-indigo-400">📊</span></div>
+          <p id="metric-total" class="text-2xl font-bold font-mono text-zinc-100">0</p>
+        </div>
+        <div class="glass rounded-xl p-4">
+          <div class="flex items-center justify-between mb-2"><p class="text-xs text-zinc-500">Filtered Matches</p><span class="text-emerald-400">🎯</span></div>
+          <p id="metric-filtered" class="text-2xl font-bold font-mono text-zinc-100">0</p>
+        </div>
+        <div class="glass rounded-xl p-4">
+          <div class="flex items-center justify-between mb-2"><p class="text-xs text-zinc-500">Active Tech Hubs</p><span class="text-fuchsia-400">🌐</span></div>
+          <p id="metric-hubs" class="text-2xl font-bold font-mono text-zinc-100">0</p>
+        </div>
+        <div class="glass rounded-xl p-4">
+          <div class="flex items-center justify-between mb-2"><p class="text-xs text-zinc-500">WhatsApp Bot Status</p><span class="text-green-400">💬</span></div>
+          <p id="metric-whatsapp" class="text-lg font-bold text-emerald-400">Linked</p>
+        </div>
+      </div>
+
+      <div id="data-source-banner" class="hidden mb-4 text-xs font-mono text-amber-400/80 bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2"></div>
+
+      <!-- grid -->
+      <div id="opp-grid" class="grid grid-cols-1 md:grid-cols-2 gap-5"></div>
+
+      <!-- empty state -->
+      <div id="empty-state" class="hidden glass rounded-2xl py-16 text-center">
+        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" class="mx-auto mb-4 opacity-60">
+          <circle cx="28" cy="28" r="24" stroke="#3f3f46" stroke-width="1.5"/>
+          <circle cx="28" cy="28" r="16" stroke="#3f3f46" stroke-width="1.5"/>
+          <line x1="28" y1="4" x2="28" y2="52" stroke="#27272a" stroke-width="1"/>
+          <line x1="4" y1="28" x2="52" y2="28" stroke="#27272a" stroke-width="1"/>
+          <circle cx="28" cy="28" r="2.5" fill="#6366f1"/>
+        </svg>
+        <p class="text-zinc-300 font-medium mb-1">No jobs in range</p>
+        <p class="text-zinc-500 text-sm">Nothing matches the hubs you've selected. Widen your radius in the sidebar.</p>
+      </div>
+    </main>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- MODAL — VOICE MOCK INTERVIEW                                  -->
+<!-- ============================================================ -->
+<div id="voice-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+  <div class="glass rounded-2xl max-w-sm w-full p-6 relative">
+    <button onclick="closeVoiceModal()" class="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300">✕</button>
+    <p class="text-xs text-zinc-500 mb-1">1-Minute Voice AI Mock Interview</p>
+    <h3 id="voice-modal-title" class="font-semibold text-zinc-100 mb-6">—</h3>
+    <div class="flex flex-col items-center gap-4 mb-6">
+      <div class="mic-pulse"><span class="text-2xl">🎙️</span></div>
+      <p id="voice-status" class="text-sm text-zinc-400">Listening…</p>
+    </div>
+    <div id="voice-feedback" class="space-y-2 min-h-[80px]"></div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODAL — RESUME PREVIEW                                        -->
+<!-- ============================================================ -->
+<div id="resume-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+  <div class="glass rounded-2xl max-w-md w-full p-0 relative overflow-hidden">
+    <button onclick="closeResumeModal()" class="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 z-10">✕</button>
+    <div class="p-6 border-b border-[#27272a]">
+      <p class="text-xs text-zinc-500 mb-1">AI-Tailored Resume</p>
+      <h3 id="resume-modal-title" class="font-semibold text-zinc-100">—</h3>
+    </div>
+    <div class="bg-white text-zinc-900 p-6 font-mono text-[11px] leading-relaxed max-h-[340px] overflow-y-auto" id="resume-preview-body"></div>
+    <div class="p-4 border-t border-[#27272a] flex justify-end">
+      <button onclick="downloadResume()" class="px-4 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-sm font-semibold text-white transition-colors">⬇ Download .txt</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCRIPT                                                        -->
+<!-- ============================================================ -->
+<script>
+/* =========================================================
+   STATE
+========================================================= */
+const API_BASE = 'http://localhost:8000';
+const ALL_TECH = ['React', 'Python', 'Tailwind', 'FastAPI', 'Node.js', 'Go'];
+const ALL_HUBS = ['Mumbai', 'Bengaluru', 'Delhi NCR', 'Pune', 'Hyderabad', 'Remote'];
+
+const state = {
+student: {
+    id: null,
+    name: '',
+    phone: '',
+    stackRaw: ''
+  },
+  selectedTech: new Set(),
+  selectedHubs: new Set(['Bengaluru', 'Remote']),
+  onboardTech: new Set(),
+  onboardHubs: new Set(),
+  opportunities: [],
+  searchTerm: '',
+  matchmakingOn: false,
+  usingDemoData: false,
+  activeResume: null,
+};
+
+/* =========================================================
+   VIEW SWITCHING
+========================================================= */
+function showView(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  const target = document.getElementById(id);
+  target.classList.add('active');
+}
+
+/* =========================================================
+   AUTH VIEW
+========================================================= */
+function setAuthMode(mode) {
+  const slider = document.getElementById('auth-slider');
+  const tabSignin = document.getElementById('tab-signin');
+  const tabSignup = document.getElementById('tab-signup');
+  const formSignin = document.getElementById('form-signin');
+  const formSignup = document.getElementById('form-signup');
+
+  if (mode === 'signin') {
+    slider.style.transform = 'translateX(0%)';
+    tabSignin.classList.add('text-white'); tabSignin.classList.remove('text-zinc-400');
+    tabSignup.classList.add('text-zinc-400'); tabSignup.classList.remove('text-white');
+    formSignin.classList.remove('hidden');
+    formSignup.classList.add('hidden');
+  } else {
+    slider.style.transform = 'translateX(100%)';
+    tabSignup.classList.add('text-white'); tabSignup.classList.remove('text-zinc-400');
+    tabSignin.classList.add('text-zinc-400'); tabSignin.classList.remove('text-white');
+    formSignup.classList.remove('hidden');
+    formSignin.classList.add('hidden');
+  }
+}
+
+function handleSignIn(e) {
+  e.preventDefault();
+
+  state.student.id = 1;
+  state.student.name = 'Rahul';
+  state.student.phone = '+919876543210';
+  state.student.stackRaw = 'React, Python';
+
+  state.selectedTech = new Set(['React', 'Python']);
+  state.selectedHubs = new Set([
+    'Mumbai',
+    'Bengaluru',
+    'Remote'
+  ]);
+
+  showView('view-dashboard');
+  initDashboard();
+
+  return false;
+}
+async function handleSignUp(e) {
+  e.preventDefault();
+
+  const name = document.getElementById('su-name').value.trim();
+  const phoneInput = document.getElementById('su-phone').value.trim();
+  const stack = document.getElementById('su-stack').value.trim();
+
+  const phone = '+91' + phoneInput.replace(/\s+/g, '');
+
+  try {
+    const response = await fetch(`${API_BASE}/api/students`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: name,
+        phone: phone,
+        skills: stack,
+        preferred_places: 'Remote'
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      alert(data.detail || 'Could not create account');
+      return false;
+    }
+
+    // Save real backend student information
+    state.student.id = data.id;
+    state.student.name = data.name;
+    state.student.phone = data.phone;
+    state.student.stackRaw = data.skills || '';
+
+    console.log('Student created successfully:', data);
+
+    renderTechGrid();
+    renderHubGrid();
+    showView('view-onboarding');
+    goToStep(1);
+
+  } catch (error) {
+    console.error('Signup error:', error);
+    alert('Could not connect to the FastAPI backend.');
+  }
+
+  return false;
+}
+
+/* =========================================================
+   ONBOARDING VIEW
+========================================================= */
+function renderTechGrid() {
+  const grid = document.getElementById('tech-grid');
+  grid.innerHTML = '';
+  ALL_TECH.forEach(tech => {
+    const el = document.createElement('div');
+    el.className = 'tech-badge rounded-xl py-4 text-center text-sm font-medium text-zinc-300';
+    el.textContent = tech;
+    el.onclick = () => {
+      if (state.onboardTech.has(tech)) { state.onboardTech.delete(tech); el.classList.remove('selected'); }
+      else { state.onboardTech.add(tech); el.classList.add('selected'); }
+    };
+    grid.appendChild(el);
+  });
+}
+
+function renderHubGrid() {
+  const grid = document.getElementById('hub-grid');
+  grid.innerHTML = '';
+  ['Mumbai', 'Bengaluru', 'Delhi NCR', 'Remote'].forEach(hub => {
+    const el = document.createElement('div');
+    el.className = 'hub-card rounded-xl p-5 flex items-center justify-between';
+    el.innerHTML = `<span class="text-sm font-medium text-zinc-200">${hub}</span><span class="hub-check text-emerald-400 text-lg">✓</span>`;
+    el.onclick = () => {
+      if (state.onboardHubs.has(hub)) { state.onboardHubs.delete(hub); el.classList.remove('selected'); }
+      else { state.onboardHubs.add(hub); el.classList.add('selected'); }
+    };
+    grid.appendChild(el);
+  });
+}
+
+function goToStep(step) {
+  const line = document.getElementById('prog-line');
+  const step1 = document.getElementById('prog-step1');
+  const step2 = document.getElementById('prog-step2');
+  document.getElementById('onboard-step-1').classList.toggle('hidden', step !== 1);
+  document.getElementById('onboard-step-2').classList.toggle('hidden', step !== 2);
+  if (step === 2) {
+    line.style.width = '100%';
+    step2.classList.remove('text-zinc-600'); step2.classList.add('text-indigo-400');
+  } else {
+    line.style.width = '0%';
+    step2.classList.add('text-zinc-600'); step2.classList.remove('text-indigo-400');
+  }
+}
+
+async function finishOnboarding() {
+
+  state.selectedTech = new Set(
+    state.onboardTech.size
+      ? state.onboardTech
+      : ['React', 'FastAPI']
+  );
+
+  state.selectedHubs = new Set(
+    state.onboardHubs.size
+      ? state.onboardHubs
+      : ['Bengaluru', 'Remote']
+  );
+
+  // Convert selected technologies to a string
+  const skills = [...state.selectedTech].join(', ');
+
+  // Convert selected hubs to a string
+  const preferred_places = [...state.selectedHubs].join(', ');
+
+  try {
+
+    const response = await fetch(
+      `${API_BASE}/api/students/${state.student.id}/preferences?skills=${encodeURIComponent(skills)}&preferred_places=${encodeURIComponent(preferred_places)}`,
+      {
+        method: 'PUT'
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      alert(data.detail || 'Could not save preferences');
+      return;
+    }
+
+    console.log('Preferences saved:', data);
+
+    // Update frontend student data
+    state.student.stackRaw = data.skills || '';
+
+    showView('view-dashboard');
+
+    initDashboard();
+
+  } catch (error) {
+
+    console.error('Preference update error:', error);
+
+    alert(
+      'Could not save your preferences. Make sure the FastAPI backend is running.'
+    );
+  }
+}
+
+/* =========================================================
+   DASHBOARD — INIT
+========================================================= */
+function initDashboard() {
+  document.getElementById('profile-name').textContent = state.student.name || 'Student';
+  document.getElementById('profile-phone').textContent = state.student.phone || '+91 ••••• •••••';
+
+  const stackChips = document.getElementById('profile-stack');
+  stackChips.innerHTML = '';
+  const stackList = state.selectedTech.size ? [...state.selectedTech] : (state.student.stackRaw || '').split(',').map(s => s.trim()).filter(Boolean);
+  (stackList.length ? stackList : ['React', 'Python']).forEach(t => {
+    const chip = document.createElement('span');
+    chip.className = 'text-[11px] font-mono px-2 py-1 rounded-md bg-[#18181b] border border-[#27272a] text-zinc-400';
+    chip.textContent = t;
+    stackChips.appendChild(chip);
+  });
+
+  renderHubFilterList();
+  fetchOpportunities();
+
+  document.getElementById('search-input').addEventListener('input', (e) => {
+    state.searchTerm = e.target.value.toLowerCase();
+    renderOpportunities();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === '/' && document.activeElement.id !== 'search-input') {
+      e.preventDefault();
+      document.getElementById('search-input').focus();
+    }
+  });
+}
+
+function renderHubFilterList() {
+  const list = document.getElementById('hub-filter-list');
+  list.innerHTML = '';
+  ALL_HUBS.forEach(hub => {
+    const row = document.createElement('label');
+    row.className = 'flex items-center gap-2.5 text-sm text-zinc-400 cursor-pointer select-none';
+    const checked = state.selectedHubs.has(hub);
+    row.innerHTML = `
+      <input type="checkbox" ${checked ? 'checked' : ''} class="accent-indigo-500 w-4 h-4 rounded" />
+      <span class="${checked ? 'text-zinc-200' : ''}">${hub}</span>
+    `;
+    row.querySelector('input').addEventListener('change', (e) => {
+      if (e.target.checked) state.selectedHubs.add(hub); else state.selectedHubs.delete(hub);
+      fetchOpportunities();
+    });
+    list.appendChild(row);
+  });
+}
+
+/* =========================================================
+   FETCH OPPORTUNITIES (real backend + graceful demo fallback)
+========================================================= */
+async function fetchOpportunities() {
+
+  const banner = document.getElementById('data-source-banner');
+
+  try {
+
+    if (!state.student.id) {
+      throw new Error('No logged-in student ID');
+    }
+
+    const res = await fetch(`${API_BASE}/api/opportunities?student_id=${state.student.id}`);
+
+    if (!res.ok) {
+      throw new Error(
+        'Backend responded with ' + res.status
+      );
+    }
+
+    const data = await res.json();
+
+    state.opportunities = Array.isArray(data)
+      ? data
+      : (data.opportunities || []);
+
+    state.usingDemoData = false;
+
+    banner.classList.add('hidden');
+
+  } catch (err) {
+
+    console.error('Opportunity fetch error:', err);
+
+    state.usingDemoData = true;
+
+    state.opportunities = DEMO_OPPORTUNITIES;
+
+    banner.textContent =
+      `⚠ Could not load opportunities from backend.`;
+
+    banner.classList.remove('hidden');
+  }
+
+  renderOpportunities();
+}
+
+/* =========================================================
+   DEMO DATA (fallback only)
+========================================================= */
+const DEMO_OPPORTUNITIES = [
+  { id: 1, title: 'Frontend Engineer Intern', company: 'Nimbus Labs', location: 'Bengaluru', deadline: daysFromNow(4), match_score: 95, tech_stack: ['React', 'Tailwind'] },
+  { id: 2, title: 'Backend Developer — Early Career', company: 'Fenwick Systems', location: 'Remote', deadline: daysFromNow(9), match_score: 88, tech_stack: ['FastAPI', 'Python'] },
+  { id: 3, title: 'Full-Stack Associate', company: 'Orbital Works', location: 'Delhi NCR', deadline: daysFromNow(2), match_score: 74, tech_stack: ['Node.js', 'React'] },
+  { id: 4, title: 'Platform Engineer Trainee', company: 'Glassline Co.', location: 'Pune', deadline: daysFromNow(14), match_score: 61, tech_stack: ['Go', 'Python'] },
+  { id: 5, title: 'Product Engineering Intern', company: 'Hearth Analytics', location: 'Hyderabad', deadline: daysFromNow(6), match_score: 82, tech_stack: ['React', 'FastAPI'] },
+  { id: 6, title: 'Junior Cloud Engineer', company: 'Vantage Point', location: 'Mumbai', deadline: daysFromNow(20), match_score: 55, tech_stack: ['Go', 'Node.js'] },
+];
+function daysFromNow(n) {
+  const d = new Date(); d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+/* =========================================================
+   RENDER OPPORTUNITIES
+========================================================= */
+function renderOpportunities() {
+  const grid = document.getElementById('opp-grid');
+  const emptyState = document.getElementById('empty-state');
+
+  grid.innerHTML = '';
+
+  const filtered = state.opportunities.filter(op => {
+    const inHub =
+      state.selectedHubs.size === 0 ||
+      state.selectedHubs.has(op.location);
+
+    const title = (op.title || '').toLowerCase();
+    const company = (op.company || '').toLowerCase();
+    const requiredSkills = (op.required_skills || '').toLowerCase();
+
+    const matchesSearch =
+      !state.searchTerm ||
+      title.includes(state.searchTerm) ||
+      company.includes(state.searchTerm) ||
+      requiredSkills.includes(state.searchTerm);
+
+    return inHub && matchesSearch;
+  });
+
+  document.getElementById('metric-total').textContent =
+    state.opportunities.length;
+
+  document.getElementById('metric-filtered').textContent =
+    filtered.length;
+
+  document.getElementById('metric-hubs').textContent =
+    state.selectedHubs.size;
+
+  if (filtered.length === 0) {
+    emptyState.classList.remove('hidden');
+    return;
+  }
+
+  emptyState.classList.add('hidden');
+
+  filtered.forEach(op => {
+    grid.appendChild(buildOpportunityCard(op));
+  });
+}
+
+function accentColor(score) {
+  if (score >= 85) return 'linear-gradient(90deg, #22c55e, #16a34a)';
+  if (score >= 65) return 'linear-gradient(90deg, #6366f1, #4f46e5)';
+  return 'linear-gradient(90deg, #f59e0b, #d97706)';
+}
+
+function daysUntil(dateStr) {
+  const diff = Math.ceil((new Date(dateStr) - new Date()) / (1000 * 60 * 60 * 24));
+  return diff;
+}
+
+function buildOpportunityCard(op) {
+  // Get student's skills
+  const studentSkills = (state.student.stackRaw || '')
+    .toLowerCase()
+    .split(',')
+    .map(skill => skill.trim())
+    .filter(Boolean);
+
+  // Get required skills for this opportunity
+  const requiredSkills = (op.required_skills || '')
+    .toLowerCase()
+    .split(',')
+    .map(skill => skill.trim())
+    .filter(Boolean);
+
+  // Find matching skills
+  const matchedSkills = requiredSkills.filter(skill =>
+    studentSkills.some(studentSkill =>
+      studentSkill.includes(skill) ||
+      skill.includes(studentSkill)
+    )
+  );
+
+  // Calculate match percentage
+  const matchScore = requiredSkills.length
+    ? Math.round(
+        (matchedSkills.length / requiredSkills.length) * 100
+      ): 0;
+  const card = document.createElement('div');
+  card.className = 'opp-card rounded-2xl overflow-hidden fade-in-up';
+
+  const daysLeft = daysUntil(op.deadline);
+  const roadmap = buildRoadmap(daysLeft);
+
+  card.innerHTML = `
+    <div class="accent-bar" style="background:${accentColor(matchScore)}"></div>
+    <div class="p-5">
+      <div class="flex items-start justify-between mb-3">
+        <div>
+          <h3 class="font-semibold text-zinc-100 leading-snug">${op.title}</h3>
+          <p class="text-sm text-zinc-500">${op.company}</p>
+        </div>
+        <div class="text-right shrink-0">
+          <p class="text-lg font-bold font-mono" style="color:${matchScore >= 85 ? '#22c55e' : matchScore >= 65 ? '#818cf8' : '#f59e0b'}">${matchScore}%</p>
+          <p class="text-[10px] text-zinc-600">Skill Match</p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-1.5 mb-3">
+        <span class="text-[11px] px-2 py-1 rounded-md bg-[#18181b] border border-[#27272a] text-zinc-400">📍 ${op.location}</span>
+        <span class="text-[11px] px-2 py-1 rounded-md ${daysLeft <= 3 ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-[#18181b] border-[#27272a] text-zinc-400'} border">⏳ ${daysLeft}d left</span>
+    ${(op.required_skills || '')
+        .split(',')
+        .map(t => t.trim())
+        .filter(Boolean)
+        .map(t => `
+            <span class="text-[11px] px-2 py-1 rounded-md bg-[#18181b] border border-[#27272a] text-zinc-500">
+                ${t}
+            </span>
+        `)
+        .join('')}      </div>
+
+      <div class="flex gap-2 mb-3">
+        <button onclick='openVoiceModal(${JSON.stringify(op.title)})' class="flex-1 text-xs font-medium py-2 rounded-lg bg-[#18181b] border border-[#27272a] hover:border-zinc-600 transition-colors">🎙️ Mock Interview</button>
+        <button onclick='openResumeModal(${op.id})' class="flex-1 text-xs font-medium py-2 rounded-lg bg-[#18181b] border border-[#27272a] hover:border-zinc-600 transition-colors">📄 Tailored Resume</button>
+      </div>
+
+      <button onclick="toggleRoadmap(this)" class="w-full text-xs text-indigo-400 hover:text-indigo-300 transition-colors text-left">🗺️ View roadmap to deadline ▾</button>
+      <div class="roadmap-body hidden mt-3 pl-1">${roadmap}</div>
+    </div>
+  `;
+  card.dataset.op = JSON.stringify(op);
+  return card;
+}
+
+function toggleRoadmap(btn) {
+  const body = btn.nextElementSibling;
+  body.classList.toggle('hidden');
+}
+
+function buildRoadmap(daysLeft) {
+  const milestones = [
+    'Learn / refresh core fundamentals',
+    'Build a small proof-of-concept project',
+    'Polish portfolio & tailor resume bullets',
+    'Mock interview + final application review',
+  ];
+  const span = Math.max(daysLeft, 4);
+  const chunk = Math.max(1, Math.floor(span / milestones.length));
+  let cursor = 1;
+  let rows = '';
+  milestones.forEach((m, i) => {
+    const start = cursor;
+    const end = i === milestones.length - 1 ? span : cursor + chunk - 1;
+    cursor = end + 1;
+    rows += `
+      <div class="relative pl-7 pb-4 last:pb-0">
+        <div class="roadmap-dot absolute left-0 top-1"></div>
+        <p class="text-[11px] font-mono text-zinc-500 mb-0.5">Day ${start}–${end}</p>
+        <p class="text-xs text-zinc-300">${m}</p>
+      </div>
+    `;
+  });
+  return `<div class="relative"><div class="roadmap-line"></div>${rows}</div>`;
+}
+
+/* =========================================================
+   TRIGGER LIVE AGENT WEB-SCAN
+========================================================= */
+async function triggerScan() {
+  const btn = document.getElementById('scan-btn');
+  const icon = document.getElementById('scan-icon');
+  const label = document.getElementById('scan-label');
+  btn.disabled = true;
+  icon.outerHTML = '<span id="scan-icon" class="radar-sweep"></span>';
+  label.textContent = 'Scanning the web…';
+
+  await fetchOpportunities();
+  await new Promise(r => setTimeout(r, 900));
+
+  document.getElementById('scan-icon').outerHTML = '<span id="scan-icon">⚡</span>';
+  document.getElementById('scan-label').textContent = 'Trigger Live Agent Web-Scan';
+  btn.disabled = false;
+}
+
+/* =========================================================
+   TEAMMATE MATCHMAKING
+========================================================= */
+const PEER_POOL = [
+  { name: 'Rhea K.', role: 'UI/UX + React', hub: 'Bengaluru' },
+  { name: 'Aman V.', role: 'FastAPI + DevOps', hub: 'Remote' },
+  { name: 'Sanya T.', role: 'ML / Data', hub: 'Delhi NCR' },
+];
+function toggleMatchmaking() {
+  state.matchmakingOn = !state.matchmakingOn;
+  const track = document.getElementById('matchmaking-toggle');
+  const feed = document.getElementById('matchmaking-feed');
+  track.classList.toggle('on', state.matchmakingOn);
+  feed.classList.toggle('hidden', !state.matchmakingOn);
+  if (state.matchmakingOn) {
+    feed.innerHTML = PEER_POOL.map(p => `
+      <div class="flex items-center gap-2 text-xs bg-[#131316] border border-[#27272a] rounded-lg px-2.5 py-2">
+        <div class="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 flex items-center justify-center text-[10px] font-bold">${p.name.charAt(0)}</div>
+        <div>
+          <p class="text-zinc-200 font-medium">${p.name}</p>
+          <p class="text-zinc-500 text-[10px]">${p.role} · ${p.hub}</p>
+        </div>
+      </div>
+    `).join('');
+  }
+}
+
+/* =========================================================
+   VOICE MOCK INTERVIEW MODAL
+========================================================= */
+const VOICE_FEEDBACK_LINES = [
+  'Good clarity — try slowing down slightly on technical terms.',
+  'Strong structure: situation → action → result.',
+  'Consider quantifying the impact of your last project.',
+];
+function openVoiceModal(title) {
+  document.getElementById('voice-modal-title').textContent = title;
+  document.getElementById('voice-status').textContent = 'Listening…';
+  const feedback = document.getElementById('voice-feedback');
+  feedback.innerHTML = '';
+  document.getElementById('voice-modal').classList.remove('hidden');
+  document.getElementById('voice-modal').classList.add('flex');
+
+  VOICE_FEEDBACK_LINES.forEach((line, i) => {
+    setTimeout(() => {
+      const p = document.createElement('p');
+      p.className = 'text-xs text-zinc-400 bg-[#131316] border border-[#27272a] rounded-lg px-3 py-2 fade-in-up';
+      p.textContent = line;
+      feedback.appendChild(p);
+      if (i === VOICE_FEEDBACK_LINES.length - 1) {
+        document.getElementById('voice-status').textContent = 'Session complete — 1:00';
+      }
+    }, (i + 1) * 900);
+  });
+}
+function closeVoiceModal() {
+  document.getElementById('voice-modal').classList.add('hidden');
+  document.getElementById('voice-modal').classList.remove('flex');
+}
+
+/* =========================================================
+   TAILORED RESUME MODAL + DOWNLOAD
+========================================================= */
+function openResumeModal(opId) {
+  const op = state.opportunities.find(o => o.id === opId) || state.opportunities[0];
+  state.activeResume = op;
+  document.getElementById('resume-modal-title').textContent = `For: ${op.title} @ ${op.company}`;
+  const body = document.getElementById('resume-preview-body');
+  body.innerHTML = '<p class="animate-pulse text-zinc-400">Generating tailored draft…</p>';
+  document.getElementById('resume-modal').classList.remove('hidden');
+  document.getElementById('resume-modal').classList.add('flex');
+
+  setTimeout(() => {
+    body.innerHTML = `
+      <p class="font-bold text-sm mb-1">${state.student.name || 'Student Name'}</p>
+      <p class="mb-3 text-zinc-600">${state.student.phone || '+91 •••••'}</p>
+      <p class="font-bold mb-1">SUMMARY</p>
+      <p class="mb-3">Early-career developer skilled in ${op.required_skills || ''}, tailored for the ${op.title} role at ${op.company}.</p>
+      <p class="font-bold mb-1">RELEVANT PROJECTS</p>
+      <p class="mb-1">— Built and shipped a ${op.required_skills ? op.required_skills[0] : 'full-stack'} project end to end.</p>
+      <p class="mb-3">— Collaborated on a team codebase using clean version control practices.</p>
+      <p class="font-bold mb-1">SKILLS</p>
+      <p>${(op.required_skills || ['React', 'Python']).join(' · ')}</p>
+    `;
+  }, 1000);
+}
+function closeResumeModal() {
+  document.getElementById('resume-modal').classList.add('hidden');
+  document.getElementById('resume-modal').classList.remove('flex');
+}
+function downloadResume() {
+  const op = state.activeResume;
+  if (!op) return;
+  const text =
+`${state.student.name || 'Student Name'}
+${state.student.phone || ''}
+
+SUMMARY
+Early-career developer skilled in ${op.required_skills || ''}, tailored for the ${op.title} role at ${op.company}.
+
+RELEVANT PROJECTS
+- Built and shipped a ${op.required_skills ? op.required_skills[0] : 'full-stack'} project end to end.
+- Collaborated on a team codebase using clean version control practices.
+
+SKILLS
+${(op.required_skills || ['React', 'Python']).join(', ')}
+`;
+  const blob = new Blob([text], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `resume-${op.company.replace(/\s+/g, '_')}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* =========================================================
+   INIT
+========================================================= */
+setAuthMode('signin');
+</script>
+</body>
+</html>
